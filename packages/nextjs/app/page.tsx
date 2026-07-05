@@ -189,7 +189,7 @@ const BoardContent = () => {
         <div className="text-center mb-6">
           <h1 className="font-display font-black text-5xl md:text-7xl tracking-tight text-blood mb-1">The Board</h1>
           <p className="font-numeric uppercase tracking-[0.25em] text-ink-soft text-xs">
-            community's most wanted — sorted by reward
+            community&apos;s most wanted — sorted by reward
           </p>
         </div>
 
@@ -283,7 +283,7 @@ const Home: NextPage = () => {
             <div className="text-center mb-8">
               <h1 className="font-display font-black text-5xl md:text-7xl tracking-tight text-blood mb-1">The Board</h1>
               <p className="font-numeric uppercase tracking-[0.25em] text-ink-soft text-xs">
-                community's most wanted — sorted by reward
+                community&apos;s most wanted — sorted by reward
               </p>
             </div>
             <div className="space-y-3">
