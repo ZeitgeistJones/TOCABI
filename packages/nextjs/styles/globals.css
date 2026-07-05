@@ -1,0 +1,231 @@
+@import "tailwindcss";
+
+@theme {
+  --shadow-center: 0 0 12px -2px rgb(0 0 0 / 0.05);
+  --font-display: var(--font-playfair), serif;
+  --font-body: var(--font-libre-baskerville), serif;
+  --font-numeric: var(--font-barlow-condensed), sans-serif;
+
+  /* TOCABI design tokens — single source of truth */
+  --color-ink: #2c1a0e;
+  --color-ink-soft: #5c4433;
+  --color-paper: #f4ead5;
+  --color-paper-raised: #ede0c4;
+  --color-paper-deep: #e2d2ac;
+  --color-blood: #8b1a1a;
+  --color-blood-hover: #6f1414;
+  --color-gold: #9a7318;
+  --color-claim-blue: #1e3a5f;
+  --color-faded: #b7a88c;
+}
+
+@plugin "daisyui" {
+  themes: light;
+}
+
+@plugin "daisyui/theme" {
+  name: "light";
+
+  --color-base-100: #f4ead5;
+  --color-base-200: #ede0c4;
+  --color-base-300: #e2d2ac;
+  --color-base-content: #2c1a0e;
+  --color-primary: #8b1a1a;
+  --color-primary-content: #f4ead5;
+  --color-secondary: #1e3a5f;
+  --color-secondary-content: #f4ead5;
+  --color-accent: #9a7318;
+  --color-accent-content: #f4ead5;
+  --color-neutral: #5c4433;
+  --color-neutral-content: #f4ead5;
+  --color-info: #1e3a5f;
+  --color-success: #9a7318;
+  --color-warning: #9a7318;
+  --color-error: #8b1a1a;
+
+  /* Paper is not round */
+  --radius-field: 0.125rem;
+  --radius-box: 0.125rem;
+  --tt-tailw: 6px;
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: rgb(44 26 14 / 0.15);
+  }
+
+  p {
+    margin: 1rem 0;
+  }
+
+  body {
+    min-height: 100vh;
+    background-color: #f4ead5;
+    font-family: var(--font-body, serif);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin-bottom: 0.5rem;
+    line-height: 1.1;
+    font-family: var(--font-display, serif);
+  }
+}
+
+:root,
+[data-theme] {
+  background: var(--color-base-100);
+}
+
+.btn {
+  @apply shadow-sm;
+  border-radius: 2px;
+}
+
+.btn.btn-ghost {
+  @apply shadow-none;
+}
+
+.btn-primary:hover {
+  background-color: #6f1414;
+}
+
+.link {
+  text-underline-offset: 2px;
+}
+
+.link:hover {
+  opacity: 80%;
+}
+
+/* Rubber-stamp badge utility — used by StatusStamp */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-numeric, sans-serif);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 0.15rem 0.55rem;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  font-weight: 700;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.stamp-ink {
+  color: #2c1a0e;
+}
+
+.stamp-blue {
+  color: #1e3a5f;
+}
+
+.stamp-gold-outline {
+  color: #9a7318;
+}
+
+.stamp-gold-fill {
+  color: #f4ead5;
+  background-color: #9a7318;
+  border-color: #9a7318;
+}
+
+.stamp-faded {
+  color: #b7a88c;
+  border-color: #b7a88c;
+}
+
+/* Parchment card surface — paper on corkboard, not floating glass */
+.parchment {
+  background-color: #ede0c4;
+  color: #2c1a0e;
+  border: 1px solid rgb(44 26 14 / 0.25);
+  border-radius: 2px;
+  box-shadow: 0 1px 4px rgb(44 26 14 / 0.12);
+}
+
+/* Expired / Cancelled poster treatment */
+.poster-expired {
+  opacity: 0.6;
+  clip-path: polygon(0 0, calc(100% - 1.5rem) 0, 100% 1.5rem, 100% 100%, 0 100%);
+}
+
+/* Amount display */
+.amount-blood {
+  color: #8b1a1a;
+  font-family: var(--font-display, serif);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ink-stamp confirmation animation */
+@keyframes ink-stamp {
+  0% {
+    transform: scale(1.15) rotate(-2deg);
+    box-shadow: 0 0 0 0 rgb(139 26 26 / 0.4);
+  }
+  60% {
+    transform: scale(0.97) rotate(-1deg);
+    box-shadow: 0 0 0 8px rgb(139 26 26 / 0);
+  }
+  100% {
+    transform: scale(1) rotate(-2deg);
+    box-shadow: 0 0 0 0 rgb(139 26 26 / 0);
+  }
+}
+
+.stamp-animate {
+  animation: ink-stamp 350ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp-animate {
+    animation: none;
+  }
+}
+
+/* Typography utilities */
+.font-display {
+  font-family: var(--font-display, serif);
+}
+
+.font-body {
+  font-family: var(--font-body, serif);
+}
+
+.font-numeric {
+  font-family: var(--font-numeric, sans-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Gold only appears when something is complete */
+.text-gold {
+  color: #9a7318;
+}
+
+.text-blood {
+  color: #8b1a1a;
+}
+
+.text-ink-soft {
+  color: #5c4433;
+}
+
+.text-claim-blue {
+  color: #1e3a5f;
+}
+
+.text-faded {
+  color: #b7a88c;
+}
+
+.bg-paper-deep {
+  background-color: #e2d2ac;
+}

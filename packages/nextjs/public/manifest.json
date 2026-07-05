@@ -1,0 +1,9 @@
+{
+  "name": "TOCABI",
+  "short_name": "TOCABI",
+  "description": "Take Our Clawd And Build It. Community-funded bounty board on Base.",
+  "iconPath": "favicon.svg",
+  "theme_color": "#F4EAD5",
+  "background_color": "#F4EAD5",
+  "display": "standalone"
+}

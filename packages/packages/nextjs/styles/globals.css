@@ -1,0 +1,179 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme {
+  --shadow-center: 0 0 12px -2px rgb(0 0 0 / 0.05);
+  --animate-pulse-fast: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --font-display: var(--font-playfair), serif;
+  --font-body: var(--font-libre-baskerville), serif;
+  --font-numeric: var(--font-barlow-condensed), sans-serif;
+}
+
+@plugin "daisyui" {
+  themes:
+    light,
+    dark --prefersdark;
+}
+
+@plugin "daisyui/theme" {
+  name: "light";
+
+  --color-base-100: #e8d5b0;
+  --color-base-200: #ddc89a;
+  --color-base-300: #cdb480;
+  --color-base-content: #2c1a0e;
+  --color-primary: #c9a84c;
+  --color-primary-content: #2c1a0e;
+  --color-secondary: #8b1a1a;
+  --color-secondary-content: #e8d5b0;
+  --color-accent: #c9a84c;
+  --color-accent-content: #2c1a0e;
+  --color-neutral: #3d2b1f;
+  --color-neutral-content: #e8d5b0;
+  --color-info: #3d2b1f;
+  --color-success: #3a6b3a;
+  --color-warning: #c9a84c;
+  --color-error: #8b1a1a;
+
+  --radius-field: 0.5rem;
+  --radius-box: 0.5rem;
+  --tt-tailw: 6px;
+}
+
+@plugin "daisyui/theme" {
+  name: "dark";
+
+  --color-base-100: #2c1a0e;
+  --color-base-200: #3d2b1f;
+  --color-base-300: #4a3526;
+  --color-base-content: #e8d5b0;
+  --color-primary: #c9a84c;
+  --color-primary-content: #2c1a0e;
+  --color-secondary: #8b1a1a;
+  --color-secondary-content: #e8d5b0;
+  --color-accent: #c9a84c;
+  --color-accent-content: #2c1a0e;
+  --color-neutral: #3d2b1f;
+  --color-neutral-content: #e8d5b0;
+  --color-info: #c9a84c;
+  --color-success: #6b9a6b;
+  --color-warning: #c9a84c;
+  --color-error: #8b1a1a;
+
+  --radius-field: 0.5rem;
+  --radius-box: 0.5rem;
+  --tt-tailw: 6px;
+  --tt-bg: var(--color-base-200);
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+
+  p {
+    margin: 1rem 0;
+  }
+
+  body {
+    min-height: 100vh;
+    background-color: #2c1a0e;
+    font-family: var(--font-body, serif);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin-bottom: 0.5rem;
+    line-height: 1.1;
+    font-family: var(--font-display, serif);
+  }
+}
+
+:root,
+[data-theme] {
+  background: var(--color-base-100);
+}
+
+.btn {
+  @apply shadow-sm;
+  border-radius: 0.5rem;
+}
+
+.btn.btn-ghost {
+  @apply shadow-none;
+}
+
+.link {
+  text-underline-offset: 2px;
+}
+
+.link:hover {
+  opacity: 80%;
+}
+
+/* Rubber-stamp badge utility */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-numeric, sans-serif);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 0.15rem 0.55rem;
+  border: 1.5px solid currentColor;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  font-size: 0.7rem;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.stamp-red {
+  color: #8b1a1a;
+}
+
+.stamp-gold {
+  color: #c9a84c;
+}
+
+.stamp-dark {
+  color: #3d2b1f;
+}
+
+/* Parchment card */
+.parchment {
+  background-color: #e8d5b0;
+  color: #2c1a0e;
+  border: 1px solid #3d2b1f;
+}
+
+.amount-blood {
+  color: #8b1a1a;
+  font-family: var(--font-numeric, sans-serif);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.rank-gold {
+  color: #c9a84c;
+  font-family: var(--font-numeric, sans-serif);
+  font-weight: 700;
+}
+
+.font-display {
+  font-family: var(--font-display, serif);
+}
+
+.font-body {
+  font-family: var(--font-body, serif);
+}
+
+.font-numeric {
+  font-family: var(--font-numeric, sans-serif);
+}
