@@ -1,4 +1,4 @@
-import { bountySentence, type BountyParams } from "~~/utils/bountySentence";
+import { type BountyParams, bountySentence } from "~~/utils/bountySentence";
 
 type BountySentenceProps = BountyParams & {
   className?: string;
@@ -16,6 +16,7 @@ export const BountySentence = ({
   treasuryBps,
   burnBps,
   challengeWindow,
+  pledgerOverrideBps,
   className = "",
 }: BountySentenceProps) => {
   const sentences = bountySentence({
@@ -26,6 +27,7 @@ export const BountySentence = ({
     treasuryBps,
     burnBps,
     challengeWindow,
+    pledgerOverrideBps,
   });
 
   return (

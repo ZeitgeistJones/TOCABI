@@ -1,19 +1,21 @@
 /**
- * bountySentence — converts raw contract parameters into a single plain-English
- * sentence that anyone (not just devs) can read and understand.
+ * bountySentence — converts raw contract parameters into plain-English
+ * sentences that anyone (not just devs) can read and understand.
  *
- * Example output:
- * "First builder to claim and submit proof wins 75% of the pot.
- *  A trusted judge has 7 days to approve after submission.
- *  If unclaimed by the deadline, pledgers get their CLAWD back."
+ * ENUM ORDER IS COPIED FROM MostClawdWanted.sol — the single source of truth.
+ * If the contract ever changes, update here and nowhere else.
+ *
+ *   ResolutionMode: 0 = TrustedJudge, 1 = PledgerVote, 2 = Optimistic, 3 = JudgeWithOverride
+ *   ClaimMode:      0 = FCFS,         1 = OpenJudgePicks, 2 = OpenFirstValid
+ *   RefundPolicy:   0 = Refundable,   1 = Sticky,         2 = Hybrid
  */
 
 export type BountyParams = {
-  /** 0 = TrustedJudge, 1 = PledgerVote, 2 = Optimistic */
+  /** 0 = TrustedJudge, 1 = PledgerVote, 2 = Optimistic, 3 = JudgeWithOverride */
   resolutionMode: number;
-  /** 0 = FCFS, 1 = OpenFirstValid, 2 = OpenJudgePicks */
+  /** 0 = FCFS, 1 = OpenJudgePicks, 2 = OpenFirstValid */
   claimMode: number;
-  /** 0 = Refundable, 1 = Sticky, 2 = Burn */
+  /** 0 = Refundable, 1 = Sticky, 2 = Hybrid */
   refundPolicy: number;
   /** Basis points to claimant (out of 10000) */
   claimantBps: number;
@@ -23,6 +25,8 @@ export type BountyParams = {
   burnBps: number;
   /** Challenge window in seconds */
   challengeWindow: bigint;
+  /** Pledger override / vote threshold in basis points (optional — enriches vote-mode sentences) */
+  pledgerOverrideBps?: number;
 };
 
 // ---
@@ -33,12 +37,13 @@ function bpsToPercent(bps: number): string {
   return `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 1)}%`;
 }
 
-function formatChallengeWindow(seconds: bigint): string {
+export function humanizeSeconds(seconds: bigint | number): string {
   const s = Number(seconds);
-  if (s === 0) return "no challenge window";
+  if (s <= 0) return "no time";
   if (s < 3600) return `${Math.round(s / 60)} minutes`;
   if (s < 86400) return `${Math.round(s / 3600)} hours`;
-  return `${Math.round(s / 86400)} days`;
+  const d = Math.round(s / 86400);
+  return d === 1 ? "24 hours" : `${d} days`;
 }
 
 // ---
@@ -46,12 +51,12 @@ function formatChallengeWindow(seconds: bigint): string {
 // ---
 function claimSentence(claimMode: number): string {
   switch (claimMode) {
-    case 0:
+    case 0: // FCFS
       return "The first builder to claim it gets the shot";
-    case 1:
-      return "Any builder can submit proof — the best one wins";
-    case 2:
-      return "The judge picks the winner from all submissions";
+    case 1: // OpenJudgePicks
+      return "Any builder can submit work — the judge picks the winner";
+    case 2: // OpenFirstValid
+      return "Any builder can submit work — the first valid submission wins";
     default:
       return "Claim rules are custom";
   }
@@ -60,17 +65,20 @@ function claimSentence(claimMode: number): string {
 // ---
 // Resolution sentence
 // ---
-function resolutionSentence(resolutionMode: number, challengeWindow: bigint): string {
-  const window = formatChallengeWindow(challengeWindow);
+function resolutionSentence(resolutionMode: number, challengeWindow: bigint, pledgerOverrideBps?: number): string {
+  const window = humanizeSeconds(challengeWindow);
+  const pct = pledgerOverrideBps !== undefined ? bpsToPercent(pledgerOverrideBps) : "a share";
   switch (resolutionMode) {
-    case 0:
-      return `A trusted judge approves or rejects the work — challenge window is ${window}`;
-    case 1:
-      return `Pledgers vote to approve — challenge window is ${window}`;
-    case 2:
-      return `Work auto-resolves after a ${window} challenge window with no objection`;
+    case 0: // TrustedJudge
+      return `A judge approves or rejects the work, then a ${window} challenge window runs before payout`;
+    case 1: // PledgerVote
+      return `Pledgers vote on submissions — the top pick needs ${pct} of the pot's weight to win, settled after the deadline`;
+    case 2: // Optimistic
+      return `Work auto-resolves ${window} after the deadline if nobody objects`;
+    case 3: // JudgeWithOverride
+      return `The judge picks a winner, but pledgers holding ${pct} of the pot can override — after a ${window} challenge window`;
     default:
-      return `Resolution is custom`;
+      return "Resolution is custom";
   }
 }
 
@@ -86,16 +94,19 @@ function payoutSentence(claimantBps: number, treasuryBps: number, burnBps: numbe
 }
 
 // ---
-// Refund sentence
+// Refund sentence — mirrors refund() in MostClawdWanted.sol exactly:
+//   Cancelled / Expired  → always refundable, any policy
+//   Sticky               → otherwise never refundable
+//   Refundable / Hybrid  → refundable only while Open and past refundUnlockTime
 // ---
 function refundSentence(refundPolicy: number): string {
   switch (refundPolicy) {
-    case 0:
-      return "If it expires unclaimed, pledgers get their CLAWD back";
-    case 1:
-      return "Pledges are non-refundable regardless of outcome";
-    case 2:
-      return "If it expires unclaimed, pledged CLAWD is burned";
+    case 0: // Refundable
+      return "Pledgers can pull their CLAWD back while it's still open (after the unlock time), or any time if it's cancelled or expires";
+    case 1: // Sticky
+      return "Pledges are locked in — refunds only if the bounty is cancelled or expires";
+    case 2: // Hybrid
+      return "Pledges unlock for refund after the unlock time while the bounty is still open, or any time if it's cancelled or expires";
     default:
       return "";
   }
@@ -112,11 +123,12 @@ export function bountySentence({
   treasuryBps,
   burnBps,
   challengeWindow,
+  pledgerOverrideBps,
 }: BountyParams): string[] {
   return [
     `${claimSentence(claimMode)}.`,
-    `${resolutionSentence(resolutionMode, challengeWindow)}.`,
+    `${resolutionSentence(resolutionMode, challengeWindow, pledgerOverrideBps)}.`,
     `Payout: ${payoutSentence(claimantBps, treasuryBps, burnBps)}.`,
     `${refundSentence(refundPolicy)}.`,
-  ].filter(Boolean);
+  ].filter(s => s !== ".");
 }
