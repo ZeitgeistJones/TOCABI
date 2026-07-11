@@ -9,12 +9,12 @@ import { useAccount } from "wagmi";
 import { BountySentence } from "~~/components/BountySentence";
 import { ClientOnly } from "~~/components/ClientOnly";
 import { Countdown } from "~~/components/Countdown";
-import { LedgerTimeline, type LedgerEntry } from "~~/components/LedgerTimeline";
+import { type LedgerEntry, LedgerTimeline } from "~~/components/LedgerTimeline";
 import { PotAmount, formatClawd } from "~~/components/PotAmount";
-import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
 import { SharePosterButton } from "~~/components/SharePosterButton";
 import { StatusStamp } from "~~/components/StatusStamp";
 import { TwoStepButton } from "~~/components/TwoStepButton";
+import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
 import {
   useScaffoldEventHistory,
   useScaffoldReadContract,
@@ -170,7 +170,6 @@ const BountyDetailInner = () => {
   const b = bounty as readonly unknown[] | undefined;
   const creator = b ? (b[1] as `0x${string}`) : undefined;
   const descriptionCID = b ? (b[2] as string) : "";
-  const createdAt = b ? (b[3] as bigint) : 0n;
   const deadline = b ? (b[4] as bigint) : 0n;
   const totalPledged = b ? (b[5] as bigint) : 0n;
   const status = b ? Number(b[6] as number) : 0;
@@ -319,7 +318,7 @@ const BountyDetailInner = () => {
   // ------------------------------------------------------------------
   const submissions = useMemo<Submission[]>(() => {
     const byAddr = new Map<string, Submission>();
-    for (const ev of ((proofEvents ?? []) as unknown as RawEvent[])) {
+    for (const ev of (proofEvents ?? []) as unknown as RawEvent[]) {
       const claimant = (ev.args.claimant as string | undefined)?.toLowerCase();
       if (!claimant) continue;
       byAddr.set(claimant, {
@@ -333,11 +332,11 @@ const BountyDetailInner = () => {
     }
     // Approve / reject: latest event per claimant wins (mirror of contract state flips)
     const decisions: { addr: string; kind: "approved" | "rejected"; block: bigint }[] = [];
-    for (const ev of ((approvedEvents ?? []) as unknown as RawEvent[])) {
+    for (const ev of (approvedEvents ?? []) as unknown as RawEvent[]) {
       const addr = (ev.args.claimant as string | undefined)?.toLowerCase();
       if (addr) decisions.push({ addr, kind: "approved", block: ev.blockNumber ?? 0n });
     }
-    for (const ev of ((rejectedEvents ?? []) as unknown as RawEvent[])) {
+    for (const ev of (rejectedEvents ?? []) as unknown as RawEvent[]) {
       const addr = (ev.args.claimant as string | undefined)?.toLowerCase();
       if (addr) decisions.push({ addr, kind: "rejected", block: ev.blockNumber ?? 0n });
     }
@@ -349,7 +348,7 @@ const BountyDetailInner = () => {
       s.rejected = d.kind === "rejected";
     }
     // Vote tallies
-    for (const ev of ((votedEvents ?? []) as unknown as RawEvent[])) {
+    for (const ev of (votedEvents ?? []) as unknown as RawEvent[]) {
       const candidate = (ev.args.candidate as string | undefined)?.toLowerCase();
       const s = candidate ? byAddr.get(candidate) : undefined;
       if (!s) continue;
@@ -360,10 +359,7 @@ const BountyDetailInner = () => {
     return Array.from(byAddr.values());
   }, [proofEvents, approvedEvents, rejectedEvents, votedEvents]);
 
-  const pendingForJudge = useMemo(
-    () => submissions.filter(s => !s.approved && !s.rejected),
-    [submissions],
-  );
+  const pendingForJudge = useMemo(() => submissions.filter(s => !s.approved && !s.rejected), [submissions]);
 
   // ------------------------------------------------------------------
   // Derived — window availability (mirrors contract checks)
@@ -372,14 +368,11 @@ const BountyDetailInner = () => {
 
   const vetoOpen =
     status === 0 && hasJudge && judgeNominationTime > 0n && nowSec <= judgeNominationTime + judgeVetoWindow;
-  const iCanVeto =
-    vetoOpen && myPledge > 0n && (myLastVetoNomination as bigint | undefined) !== judgeNominationTime;
+  const iCanVeto = vetoOpen && myPledge > 0n && (myLastVetoNomination as bigint | undefined) !== judgeNominationTime;
 
-  const iCanNominateJudge =
-    status === 0 && !hasJudge && resolutionMode !== MODE_PLEDGER_VOTE && !!me && !myInfo?.hasClaimed;
+  const iCanNominateJudge = status === 0 && !hasJudge && resolutionMode !== MODE_PLEDGER_VOTE && !!me && !myInfo?.hasClaimed;
 
-  const iCanVote =
-    voteMode && !terminal && myPledge > 0n && iHaveVoted === false && submissions.length > 0;
+  const iCanVote = voteMode && !terminal && myPledge > 0n && iHaveVoted === false && submissions.length > 0;
 
   // refund() mirror: cancelled/expired → always; sticky → never; claimed/submitted/resolved → never;
   // otherwise (Open, Refundable/Hybrid) → past refundUnlockTime.
@@ -409,16 +402,24 @@ const BountyDetailInner = () => {
       );
     }
     if (resolutionMode === MODE_OPTIMISTIC) {
-      const candidate =
-        (resolvedClaimant && resolvedClaimant !== ZERO_ADDRESS) ||
-        submissions.some(s => !s.rejected);
+      const candidate = (resolvedClaimant && resolvedClaimant !== ZERO_ADDRESS) || submissions.some(s => !s.rejected);
       return candidate && nowSec >= deadline + challengeWindow;
     }
     // PledgerVote: past deadline + top candidate clears the threshold
     if (nowSec < deadline || voteThreshold === 0n) return false;
     const best = submissions.reduce<bigint>((acc, s) => (s.approveWeight > acc ? s.approveWeight : acc), 0n);
     return best >= voteThreshold;
-  }, [terminal, resolutionMode, resolvedClaimant, finalizedAt, challengeWindow, nowSec, deadline, submissions, voteThreshold]);
+  }, [
+    terminal,
+    resolutionMode,
+    resolvedClaimant,
+    finalizedAt,
+    challengeWindow,
+    nowSec,
+    deadline,
+    submissions,
+    voteThreshold,
+  ]);
 
   // ------------------------------------------------------------------
   // Derived — pledge input
@@ -455,13 +456,7 @@ const BountyDetailInner = () => {
 
   const ledgerEntries = useMemo<LedgerEntry[]>(() => {
     const rows: (LedgerEntry & { block: bigint })[] = [];
-    const push = (
-      ev: RawEvent,
-      type: LedgerEntry["type"],
-      label: string,
-      address?: string,
-      amount?: bigint,
-    ) =>
+    const push = (ev: RawEvent, type: LedgerEntry["type"], label: string, address?: string, amount?: bigint) =>
       rows.push({
         type,
         label,
@@ -471,29 +466,30 @@ const BountyDetailInner = () => {
         block: ev.blockNumber ?? 0n,
       });
 
-    for (const ev of ((createdEvents ?? []) as unknown as RawEvent[]))
+    for (const ev of (createdEvents ?? []) as unknown as RawEvent[])
       push(ev, "created", "Bounty posted", ev.args.creator as string | undefined);
-    for (const ev of ((pledgedEvents ?? []) as unknown as RawEvent[]))
+    for (const ev of (pledgedEvents ?? []) as unknown as RawEvent[])
       push(ev, "pledge", "Added to the pot", ev.args.pledger as string | undefined, ev.args.amount as bigint);
-    for (const ev of ((claimedEvents ?? []) as unknown as RawEvent[]))
+    for (const ev of (claimedEvents ?? []) as unknown as RawEvent[])
       push(ev, "claim", "Staked a claim", ev.args.claimant as string | undefined);
-    for (const ev of ((proofEvents ?? []) as unknown as RawEvent[]))
+    for (const ev of (proofEvents ?? []) as unknown as RawEvent[])
       push(ev, "proof", "Submitted proof", ev.args.claimant as string | undefined);
-    for (const ev of ((approvedEvents ?? []) as unknown as RawEvent[]))
+    for (const ev of (approvedEvents ?? []) as unknown as RawEvent[])
       push(ev, "approved", "Work approved", ev.args.claimant as string | undefined);
-    for (const ev of ((rejectedEvents ?? []) as unknown as RawEvent[]))
+    for (const ev of (rejectedEvents ?? []) as unknown as RawEvent[])
       push(ev, "rejected", "Work rejected", ev.args.claimant as string | undefined);
-    for (const ev of ((votedEvents ?? []) as unknown as RawEvent[]))
+    for (const ev of (votedEvents ?? []) as unknown as RawEvent[])
+      push(ev, "vote", ev.args.approve ? "Voted to approve" : "Voted to reject", ev.args.voter as string | undefined);
+    for (const ev of (refundedEvents ?? []) as unknown as RawEvent[])
+      push(ev, "refund", "Took back a pledge", ev.args.pledger as string | undefined, ev.args.amount as bigint);
+    for (const ev of (finalizedEvents ?? []) as unknown as RawEvent[])
       push(
         ev,
-        "vote",
-        ev.args.approve ? "Voted to approve" : "Voted to reject",
-        ev.args.voter as string | undefined,
+        "paid",
+        "Paid out — bounty built",
+        ev.args.winner as string | undefined,
+        ev.args.claimantAmount as bigint,
       );
-    for (const ev of ((refundedEvents ?? []) as unknown as RawEvent[]))
-      push(ev, "refund", "Took back a pledge", ev.args.pledger as string | undefined, ev.args.amount as bigint);
-    for (const ev of ((finalizedEvents ?? []) as unknown as RawEvent[]))
-      push(ev, "paid", "Paid out — bounty built", ev.args.winner as string | undefined, ev.args.claimantAmount as bigint);
 
     // Newest first (spec) — order by block number, always present.
     rows.sort((a, z) => (z.block > a.block ? 1 : z.block < a.block ? -1 : 0));
@@ -504,11 +500,21 @@ const BountyDetailInner = () => {
       amount: r.amount,
       timestamp: r.timestamp,
     }));
-  }, [createdEvents, pledgedEvents, claimedEvents, proofEvents, approvedEvents, rejectedEvents, votedEvents, refundedEvents, finalizedEvents]);
+  }, [
+    createdEvents,
+    pledgedEvents,
+    claimedEvents,
+    proofEvents,
+    approvedEvents,
+    rejectedEvents,
+    votedEvents,
+    refundedEvents,
+    finalizedEvents,
+  ]);
 
   const pledgerCount = useMemo(() => {
     const set = new Set<string>();
-    for (const ev of ((pledgedEvents ?? []) as unknown as RawEvent[])) {
+    for (const ev of (pledgedEvents ?? []) as unknown as RawEvent[]) {
       const p = ev.args.pledger as string | undefined;
       if (p) set.add(p.toLowerCase());
     }
@@ -1132,9 +1138,7 @@ const BountyDetailInner = () => {
           </div>
           <div>
             <div className="text-faded mb-0.5">Posted by</div>
-            <div>
-              {creator && <span className="font-numeric text-xs text-ink-soft">{truncAddr(creator)}</span>}
-            </div>
+            <div>{creator && <span className="font-numeric text-xs text-ink-soft">{truncAddr(creator)}</span>}</div>
           </div>
         </div>
 
