@@ -373,7 +373,8 @@ const BountyDetailInner = () => {
     status === 0 && hasJudge && judgeNominationTime > 0n && nowSec <= judgeNominationTime + judgeVetoWindow;
   const iCanVeto = vetoOpen && myPledge > 0n && (myLastVetoNomination as bigint | undefined) !== judgeNominationTime;
 
-  const iCanNominateJudge = status === 0 && !hasJudge && resolutionMode !== MODE_PLEDGER_VOTE && !!me && !myInfo?.hasClaimed;
+  const iCanNominateJudge =
+    status === 0 && !hasJudge && resolutionMode !== MODE_PLEDGER_VOTE && !!me && !myInfo?.hasClaimed;
 
   const iCanVote = voteMode && !terminal && myPledge > 0n && iHaveVoted === false && submissions.length > 0;
 
@@ -550,7 +551,7 @@ const BountyDetailInner = () => {
   };
 
   const handlePledge = async () => {
-    if (!bountyId || pledgeAmountWei === 0n) return;
+    if (bountyId === null || pledgeAmountWei === 0n) return;
     await writeBounty(
       { functionName: "pledge", args: [bountyId, pledgeAmountWei] },
       { onBlockConfirmation: () => notification.success("Your pledge is on the poster.") },
@@ -559,7 +560,7 @@ const BountyDetailInner = () => {
   };
 
   const handleClaim = async () => {
-    if (!bountyId) return;
+    if (bountyId === null) return;
     await writeBounty(
       { functionName: "claim", args: [bountyId] },
       {
@@ -574,7 +575,7 @@ const BountyDetailInner = () => {
   };
 
   const handleSubmitProof = async () => {
-    if (!bountyId || !proofCID.trim()) return;
+    if (bountyId === null || !proofCID.trim()) return;
     await writeBounty(
       { functionName: "submitProof", args: [bountyId, proofCID.trim()] },
       { onBlockConfirmation: () => notification.success("Proof's in. Awaiting judgment.") },
@@ -583,7 +584,7 @@ const BountyDetailInner = () => {
   };
 
   const handleJudgeApprove = async (claimant: string) => {
-    if (!bountyId) return;
+    if (bountyId === null) return;
     await writeBounty(
       { functionName: "approve", args: [bountyId, claimant as `0x${string}`] },
       { onBlockConfirmation: () => notification.success("Approved. Challenge window open.") },
@@ -591,7 +592,7 @@ const BountyDetailInner = () => {
   };
 
   const handleJudgeReject = async (claimant: string) => {
-    if (!bountyId) return;
+    if (bountyId === null) return;
     await writeBounty(
       { functionName: "reject", args: [bountyId, claimant as `0x${string}`] },
       { onBlockConfirmation: () => notification.success("Rejected. The hunt continues.") },
@@ -599,7 +600,7 @@ const BountyDetailInner = () => {
   };
 
   const handleVote = async (candidate: string, approve: boolean) => {
-    if (!bountyId) return;
+    if (bountyId === null) return;
     await writeBounty(
       { functionName: "voteResolve", args: [bountyId, candidate as `0x${string}`, approve] },
       { onBlockConfirmation: () => notification.success("Vote's on the record.") },
@@ -607,7 +608,7 @@ const BountyDetailInner = () => {
   };
 
   const handleVetoJudge = async () => {
-    if (!bountyId) return;
+    if (bountyId === null) return;
     await writeBounty(
       { functionName: "vetoJudge", args: [bountyId] },
       { onBlockConfirmation: () => notification.success("Veto registered.") },
@@ -615,7 +616,7 @@ const BountyDetailInner = () => {
   };
 
   const handleNominateJudge = async () => {
-    if (!bountyId) return;
+    if (bountyId === null) return;
     await writeBounty(
       { functionName: "nominateJudge", args: [bountyId] },
       { onBlockConfirmation: () => notification.success("You're the judge now. Veto window open.") },
@@ -623,7 +624,7 @@ const BountyDetailInner = () => {
   };
 
   const handleFinalize = async () => {
-    if (!bountyId) return;
+    if (bountyId === null) return;
     await writeBounty(
       { functionName: "finalize", args: [bountyId] },
       { onBlockConfirmation: () => notification.success("Paid out. Another one built.") },
@@ -631,7 +632,7 @@ const BountyDetailInner = () => {
   };
 
   const handleRefund = async () => {
-    if (!bountyId) return;
+    if (bountyId === null) return;
     await writeBounty(
       { functionName: "refund", args: [bountyId] },
       { onBlockConfirmation: () => notification.success("Your CLAWD is back in your pocket.") },
@@ -639,7 +640,7 @@ const BountyDetailInner = () => {
   };
 
   const handleExpireClaim = async () => {
-    if (!bountyId) return;
+    if (bountyId === null) return;
     await writeBounty(
       { functionName: "expireClaim", args: [bountyId] },
       { onBlockConfirmation: () => notification.success("Slot's free. Someone else can step up.") },
@@ -647,7 +648,7 @@ const BountyDetailInner = () => {
   };
 
   const handleExpireBounty = async () => {
-    if (!bountyId) return;
+    if (bountyId === null) return;
     await writeBounty(
       { functionName: "expireBounty", args: [bountyId] },
       { onBlockConfirmation: () => notification.success("Case closed. Pledgers can take refunds.") },
@@ -655,7 +656,7 @@ const BountyDetailInner = () => {
   };
 
   const handleCancel = async () => {
-    if (!bountyId) return;
+    if (bountyId === null) return;
     await writeBounty(
       { functionName: "cancelBounty", args: [bountyId] },
       { onBlockConfirmation: () => notification.success("Called off. Pledgers can take refunds.") },
@@ -1203,10 +1204,11 @@ const BountyDetailInner = () => {
           <div className="border-t border-ink/10 pt-3 flex flex-wrap gap-x-5 gap-y-1">
             {secondaryLinks.map(link => (
               <button
+                type="button"
                 key={link.label}
-                onClick={link.onClick}
+                onClick={() => void link.onClick()}
                 disabled={isMining}
-                className={`link font-numeric text-xs uppercase tracking-widest cursor-pointer bg-transparent border-0 p-0 ${
+                className={`link font-numeric text-xs uppercase tracking-widest cursor-pointer bg-transparent border-0 p-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline ${
                   link.danger ? "text-blood" : "text-ink-soft"
                 }`}
               >
@@ -1220,9 +1222,10 @@ const BountyDetailInner = () => {
         {connectedAddress && !wrongNetwork && !terminal && expireBountyReady && (
           <div className="border-t border-ink/10 pt-3">
             <button
-              onClick={handleExpireBounty}
+              type="button"
+              onClick={() => void handleExpireBounty()}
               disabled={isMining}
-              className="link font-numeric text-xs uppercase tracking-widest text-faded cursor-pointer bg-transparent border-0 p-0"
+              className="link font-numeric text-xs uppercase tracking-widest text-faded cursor-pointer bg-transparent border-0 p-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
             >
               Close the case (expire this bounty — deadline long gone)
             </button>

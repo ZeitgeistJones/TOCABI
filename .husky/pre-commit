@@ -1,1 +1,15 @@
-yarn lint-staged --verbose
+#!/usr/bin/env sh
+# GitHub Desktop often lacks yarn on PATH (exit 127). Prefer local lint-staged via node.
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+export PATH="/c/Program Files/nodejs:/c/Program Files (x86)/nodejs:$ROOT/node_modules/.bin:$PATH"
+
+if [ -f "$ROOT/node_modules/lint-staged/bin/lint-staged.js" ]; then
+  node "$ROOT/node_modules/lint-staged/bin/lint-staged.js" --verbose
+elif command -v yarn >/dev/null 2>&1; then
+  yarn lint-staged --verbose
+elif command -v corepack >/dev/null 2>&1; then
+  corepack yarn lint-staged --verbose
+else
+  echo "husky: cannot run lint-staged (node/yarn missing from PATH)."
+  exit 127
+fi
