@@ -13,8 +13,13 @@ import { useScaffoldWriteContract, useTargetNetwork } from "~~/hooks/scaffold-et
 import { notification } from "~~/utils/scaffold-eth";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const MAX_DESCRIPTION_LENGTH = 300;
 
-type ResolutionMode = 0 | 1 | 2;
+// Enum values mirror MostClawdWanted.sol — the single source of truth.
+//   ResolutionMode: 0 = TrustedJudge, 1 = PledgerVote, 2 = Optimistic, 3 = JudgeWithOverride
+//   ClaimMode:      0 = FCFS, 1 = OpenJudgePicks, 2 = OpenFirstValid
+//   RefundPolicy:   0 = Refundable, 1 = Sticky, 2 = Hybrid
+type ResolutionMode = 0 | 1 | 2 | 3;
 type ClaimMode = 0 | 1 | 2;
 type RefundPolicy = 0 | 1 | 2;
 
@@ -58,7 +63,7 @@ const PRESETS: Preset[] = [
     tagline: "Auto-resolves, pledges are sticky",
     description: "Optimistic resolution. Pays out after challenge window with no objection.",
     resolutionMode: 2,
-    claimMode: 1,
+    claimMode: 2,
     refundPolicy: 1,
     claimantBps: 9000,
     treasuryBps: 500,
@@ -152,9 +157,7 @@ const StepDots = ({ step, total }: { step: number; total: number }) => (
     {Array.from({ length: total }).map((_, i) => (
       <div
         key={i}
-        className={`h-1.5 transition-all ${
-          i < step ? "w-6 bg-blood" : i === step ? "w-6 bg-blood" : "w-3 bg-ink/20"
-        }`}
+        className={`h-1.5 transition-all ${i <= step ? "w-6 bg-blood" : "w-3 bg-ink/20"}`}
         style={{ borderRadius: 0 }}
       />
     ))}
@@ -172,15 +175,17 @@ const CreateWizard = () => {
 
   const [step, setStep] = useState(0);
 
-  // Step 1 fields
-  const [descriptionCID, setDescriptionCID] = useState("");
+  // Step 1 fields — description is plain English, stored on-chain as-is.
+  // (The contract field is a string with no CID validation; text works and outlives any unpinned CID.)
+  const [description, setDescription] = useState("");
   const [deadlineStr, setDeadlineStr] = useState("");
 
   // Step 2 fields
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const [resolutionMode, setResolutionMode] = useState<ResolutionMode>(0);
   const [judge, setJudge] = useState<string>("");
-  const [judgeVetoWindowDays, setJudgeVetoWindowDays] = useState<number>(2);
+  // Contract only accepts 1 / 3 / 7 days for veto + challenge windows — enforced via selects.
+  const [judgeVetoWindowDays, setJudgeVetoWindowDays] = useState<number>(3);
   const [claimMode, setClaimMode] = useState<ClaimMode>(0);
   const [claimWindowHours, setClaimWindowHours] = useState<number>(24);
   const [refundPolicy, setRefundPolicy] = useState<RefundPolicy>(0);
@@ -192,6 +197,7 @@ const CreateWizard = () => {
 
   const totalBps = claimantBps + treasuryBps + burnBps;
   const splitsValid = totalBps === 10000;
+  const needsJudgeField = resolutionMode === 0 || resolutionMode === 3;
 
   const deadlineUnix = useMemo(() => {
     if (!deadlineStr) return 0n;
@@ -214,7 +220,8 @@ const CreateWizard = () => {
   };
 
   const validateStep1 = (): string | null => {
-    if (!descriptionCID.trim()) return "Description CID is required.";
+    if (!description.trim()) return "Tell us what you want built.";
+    if (description.trim().length < 8) return "Give the builders a little more to go on.";
     if (deadlineUnix === 0n) return "Deadline is required.";
     if (deadlineUnix <= BigInt(Math.floor(Date.now() / 1000))) return "Deadline must be in the future.";
     return null;
@@ -222,29 +229,41 @@ const CreateWizard = () => {
 
   const validateStep2 = (): string | null => {
     if (!splitsValid) return "Splits must add up to 100%.";
-    if (resolutionMode === 0 && (!judge || !isAddress(judge))) return "TrustedJudge mode requires a valid address.";
+    if (claimantBps < 6000) return "Builder share must be at least 60%.";
+    if (treasuryBps > 2000) return "Treasury share can't exceed 20%.";
+    if (burnBps > 2000) return "Burn share can't exceed 20%.";
+    if (resolutionMode === 0 && (!judge || !isAddress(judge))) return "Trusted Judge mode needs a valid judge address.";
+    if (resolutionMode === 3 && judge && !isAddress(judge)) return "Judge address isn't valid.";
+    if (claimWindowHours < 1) return "Claim window must be at least 1 hour.";
+    if (pledgerOverrideBps < 1 || pledgerOverrideBps > 10000) return "Pledger override must be between 0.01% and 100%.";
     return null;
   };
 
   const handleNext = () => {
     if (step === 0) {
       const err = validateStep1();
-      if (err) { notification.error(err); return; }
+      if (err) {
+        notification.error(err);
+        return;
+      }
     }
     if (step === 1) {
       const err = validateStep2();
-      if (err) { notification.error(err); return; }
+      if (err) {
+        notification.error(err);
+        return;
+      }
     }
     setStep(s => s + 1);
   };
 
   const handleSubmit = async () => {
-    const judgeArg = resolutionMode === 0 ? (judge as `0x${string}`) : (ZERO_ADDRESS as `0x${string}`);
+    const judgeArg = needsJudgeField && judge ? (judge as `0x${string}`) : (ZERO_ADDRESS as `0x${string}`);
     try {
       await writeContractAsync({
         functionName: "createBounty",
         args: [
-          descriptionCID.trim(),
+          description.trim(),
           deadlineUnix,
           resolutionMode,
           judgeArg,
@@ -260,7 +279,7 @@ const CreateWizard = () => {
           BigInt(challengeWindowDays * 86400),
         ],
       });
-      notification.success("Contract posted. The streets will know shortly.");
+      notification.success("Poster's up. Spread the word.");
       router.push("/");
     } catch (e) {
       console.error(e);
@@ -276,16 +295,23 @@ const CreateWizard = () => {
         <div className="parchment px-6 py-8 space-y-5">
           <div>
             <h2 className="font-display text-2xl font-black text-blood">What do you want built?</h2>
-            <p className="font-body text-sm text-ink-soft mt-1">Paste an IPFS CID describing the task in plain English.</p>
+            <p className="font-body text-sm text-ink-soft mt-1">
+              Plain English. This goes on the poster, straight on-chain.
+            </p>
           </div>
 
-          <Field label="Description CID" hint="Upload your brief to IPFS, paste the CID here.">
-            <input
-              className="input input-bordered w-full font-numeric rounded-none"
-              placeholder="Qm… or bafy…"
-              value={descriptionCID}
-              onChange={e => setDescriptionCID(e.target.value)}
+          <Field label="The ask" hint="Keep it tight — include a link if you need more room for details.">
+            <textarea
+              className="textarea textarea-bordered w-full font-body rounded-none text-sm leading-relaxed"
+              rows={4}
+              maxLength={MAX_DESCRIPTION_LENGTH}
+              placeholder="Build a Telegram bot that posts new TOCABI bounties to our group chat…"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
             />
+            <p className="font-numeric text-xs text-faded text-right mt-0.5">
+              {description.length}/{MAX_DESCRIPTION_LENGTH}
+            </p>
           </Field>
 
           <Field label="Deadline" hint="When the bounty expires if unfilled.">
@@ -316,9 +342,7 @@ const CreateWizard = () => {
                   key={p.name}
                   onClick={() => applyPreset(i)}
                   className={`w-full text-left px-4 py-3 border transition-colors rounded-none ${
-                    selectedPreset === i
-                      ? "border-blood bg-blood/5"
-                      : "border-ink/15 hover:border-ink/40 bg-transparent"
+                    selectedPreset === i ? "border-blood bg-blood/5" : "border-ink/15 hover:border-ink/40 bg-transparent"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -326,9 +350,7 @@ const CreateWizard = () => {
                       <p className="font-display font-bold text-ink leading-none mb-0.5">{p.name}</p>
                       <p className="font-numeric text-xs text-ink-soft uppercase tracking-widest">{p.tagline}</p>
                     </div>
-                    {selectedPreset === i && (
-                      <span className="stamp stamp-ink text-xs shrink-0 mt-0.5">Selected</span>
-                    )}
+                    {selectedPreset === i && <span className="stamp stamp-ink text-xs shrink-0 mt-0.5">Selected</span>}
                   </div>
                 </button>
               ))}
@@ -348,48 +370,61 @@ const CreateWizard = () => {
             </summary>
             <div className="mt-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Field label="Resolution mode">
+                <Field label="Who decides">
                   <select
                     className="select select-bordered w-full rounded-none"
                     value={resolutionMode}
-                    onChange={e => { setResolutionMode(Number(e.target.value) as ResolutionMode); setSelectedPreset(null); }}
+                    onChange={e => {
+                      setResolutionMode(Number(e.target.value) as ResolutionMode);
+                      setSelectedPreset(null);
+                    }}
                   >
-                    <option value={0}>TrustedJudge</option>
-                    <option value={1}>PledgerVote</option>
-                    <option value={2}>Optimistic</option>
+                    <option value={0}>Trusted judge</option>
+                    <option value={1}>Pledger vote</option>
+                    <option value={2}>Optimistic (auto)</option>
+                    <option value={3}>Judge + pledger override</option>
                   </select>
                 </Field>
-                <Field label="Claim mode">
+                <Field label="Who can build">
                   <select
                     className="select select-bordered w-full rounded-none"
                     value={claimMode}
-                    onChange={e => { setClaimMode(Number(e.target.value) as ClaimMode); setSelectedPreset(null); }}
+                    onChange={e => {
+                      setClaimMode(Number(e.target.value) as ClaimMode);
+                      setSelectedPreset(null);
+                    }}
                   >
-                    <option value={0}>FCFS</option>
-                    <option value={1}>OpenFirstValid</option>
-                    <option value={2}>OpenJudgePicks</option>
+                    <option value={0}>First come, first served</option>
+                    <option value={1}>Open — judge picks best</option>
+                    <option value={2}>Open — first valid wins</option>
                   </select>
                 </Field>
-                <Field label="Refund policy">
+                <Field label="Refunds">
                   <select
                     className="select select-bordered w-full rounded-none"
                     value={refundPolicy}
-                    onChange={e => { setRefundPolicy(Number(e.target.value) as RefundPolicy); setSelectedPreset(null); }}
+                    onChange={e => {
+                      setRefundPolicy(Number(e.target.value) as RefundPolicy);
+                      setSelectedPreset(null);
+                    }}
                   >
                     <option value={0}>Refundable</option>
-                    <option value={1}>Sticky</option>
-                    <option value={2}>Burn</option>
+                    <option value={1}>Locked in (no refunds)</option>
+                    <option value={2}>Unlocks later (hybrid)</option>
                   </select>
                 </Field>
               </div>
 
-              {resolutionMode === 0 && (
-                <Field label="Judge address" hint="Who approves or rejects submitted work.">
-                  <AddressInput
-                    value={judge}
-                    onChange={(value: string) => setJudge(value)}
-                    placeholder="0x… or vitalik.eth"
-                  />
+              {needsJudgeField && (
+                <Field
+                  label="Judge address"
+                  hint={
+                    resolutionMode === 0
+                      ? "Who approves or rejects submitted work."
+                      : "Optional — leave blank for an open judge slot anyone can step into."
+                  }
+                >
+                  <AddressInput value={judge} onChange={(value: string) => setJudge(value)} placeholder="0x… or vitalik.eth" />
                 </Field>
               )}
 
@@ -397,30 +432,50 @@ const CreateWizard = () => {
               <div className="grid grid-cols-3 gap-3">
                 <Field label="Builder %">
                   <input
-                    type="number" min={0} max={100} step={0.01}
+                    type="number"
+                    min={60}
+                    max={100}
+                    step={0.01}
                     className="input input-bordered w-full font-numeric rounded-none"
                     value={(claimantBps / 100).toString()}
-                    onChange={e => { setClaimantBps(Math.round(Number(e.target.value || "0") * 100)); setSelectedPreset(null); }}
+                    onChange={e => {
+                      setClaimantBps(Math.round(Number(e.target.value || "0") * 100));
+                      setSelectedPreset(null);
+                    }}
                   />
                 </Field>
                 <Field label="Treasury %">
                   <input
-                    type="number" min={0} max={100} step={0.01}
+                    type="number"
+                    min={0}
+                    max={20}
+                    step={0.01}
                     className="input input-bordered w-full font-numeric rounded-none"
                     value={(treasuryBps / 100).toString()}
-                    onChange={e => { setTreasuryBps(Math.round(Number(e.target.value || "0") * 100)); setSelectedPreset(null); }}
+                    onChange={e => {
+                      setTreasuryBps(Math.round(Number(e.target.value || "0") * 100));
+                      setSelectedPreset(null);
+                    }}
                   />
                 </Field>
                 <Field label="Burn %">
                   <input
-                    type="number" min={0} max={100} step={0.01}
+                    type="number"
+                    min={0}
+                    max={20}
+                    step={0.01}
                     className="input input-bordered w-full font-numeric rounded-none"
                     value={(burnBps / 100).toString()}
-                    onChange={e => { setBurnBps(Math.round(Number(e.target.value || "0") * 100)); setSelectedPreset(null); }}
+                    onChange={e => {
+                      setBurnBps(Math.round(Number(e.target.value || "0") * 100));
+                      setSelectedPreset(null);
+                    }}
                   />
                 </Field>
               </div>
-              <p className={`font-numeric text-xs uppercase tracking-widest ${splitsValid ? "text-faded" : "text-blood"}`}>
+              <p
+                className={`font-numeric text-xs uppercase tracking-widest ${splitsValid ? "text-faded" : "text-blood"}`}
+              >
                 Total: {(totalBps / 100).toFixed(2)}% {splitsValid ? "✓" : "— must equal 100%"}
               </p>
 
@@ -438,7 +493,10 @@ const CreateWizard = () => {
                 </Field>
                 <Field label="Pledger override %">
                   <input
-                    type="number" min={0} max={100} step={0.01}
+                    type="number"
+                    min={0.01}
+                    max={100}
+                    step={0.01}
                     className="input input-bordered w-full font-numeric rounded-none"
                     value={(pledgerOverrideBps / 100).toString()}
                     onChange={e => setPledgerOverrideBps(Math.round(Number(e.target.value || "0") * 100))}
@@ -446,7 +504,9 @@ const CreateWizard = () => {
                 </Field>
                 <Field label="Claim window (hours)">
                   <input
-                    type="number" min={1} step={1}
+                    type="number"
+                    min={1}
+                    step={1}
                     className="input input-bordered w-full font-numeric rounded-none"
                     value={claimWindowHours.toString()}
                     onChange={e => setClaimWindowHours(Number(e.target.value || "1"))}
@@ -454,14 +514,17 @@ const CreateWizard = () => {
                 </Field>
               </div>
 
-              {resolutionMode === 0 && (
-                <Field label="Judge veto window (days)">
-                  <input
-                    type="number" min={0} step={1}
-                    className="input input-bordered w-full font-numeric rounded-none"
-                    value={judgeVetoWindowDays.toString()}
-                    onChange={e => setJudgeVetoWindowDays(Number(e.target.value || "0"))}
-                  />
+              {needsJudgeField && (
+                <Field label="Judge veto window" hint="How long pledgers have to veto a judge after nomination.">
+                  <select
+                    className="select select-bordered w-full rounded-none"
+                    value={judgeVetoWindowDays}
+                    onChange={e => setJudgeVetoWindowDays(Number(e.target.value))}
+                  >
+                    <option value={1}>1 day</option>
+                    <option value={3}>3 days</option>
+                    <option value={7}>7 days</option>
+                  </select>
                 </Field>
               )}
             </div>
@@ -469,7 +532,10 @@ const CreateWizard = () => {
 
           {/* Navigation */}
           <div className="flex gap-3">
-            <button className="btn btn-ghost rounded-none flex-1 font-numeric uppercase tracking-widest text-xs" onClick={() => setStep(0)}>
+            <button
+              className="btn btn-ghost rounded-none flex-1 font-numeric uppercase tracking-widest text-xs"
+              onClick={() => setStep(0)}
+            >
               ← Back
             </button>
             <button className="btn btn-primary rounded-none flex-1" onClick={handleNext}>
@@ -484,12 +550,14 @@ const CreateWizard = () => {
         <div className="space-y-4">
           <div className="parchment px-6 py-8">
             <h2 className="font-display text-2xl font-black text-blood mb-1">Read it back</h2>
-            <p className="font-body text-sm text-ink-soft mb-6">This is how the contract will read on-chain. No take-backs.</p>
+            <p className="font-body text-sm text-ink-soft mb-6">
+              This is how the contract will read on-chain. No take-backs.
+            </p>
 
             {/* Description */}
             <div className="mb-4">
-              <p className="font-numeric text-xs uppercase tracking-widest text-faded mb-1">CID</p>
-              <p className="font-numeric text-sm text-ink break-all">{descriptionCID}</p>
+              <p className="font-numeric text-xs uppercase tracking-widest text-faded mb-1">The ask</p>
+              <p className="font-body text-sm text-ink leading-relaxed">{description.trim()}</p>
             </div>
 
             {/* Deadline */}
@@ -511,6 +579,7 @@ const CreateWizard = () => {
                 treasuryBps={treasuryBps}
                 burnBps={burnBps}
                 challengeWindow={BigInt(challengeWindowDays * 86400)}
+                pledgerOverrideBps={pledgerOverrideBps}
               />
             </div>
 
@@ -565,7 +634,9 @@ const CreatePage: NextPage = () => {
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
       <div className="text-center mb-10">
-        <h1 className="font-display font-black text-5xl md:text-6xl tracking-tight text-blood mb-1">Put a Contract Out</h1>
+        <h1 className="font-display font-black text-5xl md:text-6xl tracking-tight text-blood mb-1">
+          Put a Contract Out
+        </h1>
         <p className="font-numeric uppercase tracking-[0.25em] text-ink-soft text-xs">
           name the target. set the rules. fund the reward.
         </p>

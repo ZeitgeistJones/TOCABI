@@ -95,6 +95,9 @@ const proofUrl = (cid: string) => {
   return `https://ipfs.io/ipfs/${c}`;
 };
 
+/** Old bounties stored raw IPFS CIDs in the description field; new ones store plain English. */
+const isLikelyCid = (s: string) => /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[a-z2-7]{20,})$/.test(s.trim());
+
 /** Zone 2 shell — one titled parchment section, one primary action inside. */
 const ActionCard = ({ eyebrow, children }: { eyebrow: string; children: React.ReactNode }) => (
   <div className="space-y-3">
@@ -1116,9 +1119,23 @@ const BountyDetailInner = () => {
           </p>
         </div>
 
-        <h2 className="font-display text-xl sm:text-2xl text-center font-bold text-ink mb-6 leading-snug">
-          {displayDescription || "(no description)"}
-        </h2>
+        {isLikelyCid(displayDescription) ? (
+          <div className="text-center mb-6">
+            <h2 className="font-display text-xl sm:text-2xl font-bold text-ink leading-snug m-0">Brief on IPFS</h2>
+            <a
+              href={proofUrl(displayDescription)}
+              target="_blank"
+              rel="noreferrer"
+              className="link font-numeric text-xs uppercase tracking-widest text-claim-blue"
+            >
+              View the full brief ↗
+            </a>
+          </div>
+        ) : (
+          <h2 className="font-display text-xl sm:text-2xl text-center font-bold text-ink mb-6 leading-snug">
+            {displayDescription || "(no description)"}
+          </h2>
+        )}
 
         <div className="text-center mb-6">
           <PotAmount amount={totalPledged} size="lg" />
