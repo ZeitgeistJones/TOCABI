@@ -3,11 +3,19 @@
   "rewrites": [
     {
       "source": "/bounty/:id",
-      "destination": "/bounty/placeholder"
+      "destination": "/bounty/placeholder/"
+    },
+    {
+      "source": "/bounty/:id/",
+      "destination": "/bounty/placeholder/"
     },
     {
       "source": "/rap-sheet/:address",
-      "destination": "/rap-sheet"
+      "destination": "/rap-sheet/"
+    },
+    {
+      "source": "/rap-sheet/:address/",
+      "destination": "/rap-sheet/"
     }
   ]
 }

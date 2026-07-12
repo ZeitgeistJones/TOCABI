@@ -1,39 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { NextPage } from "next";
 import { ClientOnly } from "~~/components/ClientOnly";
 import { HeroStats } from "~~/components/StatBlock";
 import { Ticker } from "~~/components/Ticker";
 import { PosterCard, PosterCardSkeleton } from "~~/components/PosterCard";
-import { useScaffoldEventHistory, useScaffoldReadContract } from "~~/hooks/scaffold-eth";
-
-// Base mainnet contract deploy block (approx) — keeps RPC queries cheap
-const FROM_BLOCK = 45_670_000n;
-
-type BountyEvent = {
-  args: {
-    id?: bigint;
-    creator?: string;
-    descriptionCID?: string;
-    deadline?: bigint;
-    resolutionMode?: number;
-    claimMode?: number;
-    refundPolicy?: number;
-  };
-  blockNumber?: bigint;
-};
+import { useScaffoldReadContract } from "~~/hooks/scaffold-eth";
 
 type BountyRow = {
   id: bigint;
   title: string;
   deadline: bigint;
-  resolutionMode: number;
-  claimMode: number;
-  /** Populated by LiveBountyReader */
   totalPledged: bigint;
-  /** Populated by LiveBountyReader */
+  status: number;
+};
+
+type LiveBounty = {
+  title: string;
+  deadline: bigint;
+  totalPledged: bigint;
   status: number;
 };
 
@@ -47,30 +34,38 @@ const FILTER_TABS: { key: FilterKey; label: string }[] = [
 ];
 
 // ---
-// Reads a single bounty's live state and calls onUpdate to lift state up.
+// Reads a single bounty's live state and lifts it to the board.
+// Listing uses storage (bountyCount + bounties(id)), not getLogs — event history
+// with the default 500-block batch floods Base RPCs and returns an empty board.
 // ---
 const LiveBountyReader = ({
   id,
   onUpdate,
+  onSettled,
 }: {
   id: bigint;
-  onUpdate: (id: string, totalPledged: bigint, status: number, deadline: bigint) => void;
+  onUpdate: (id: string, live: LiveBounty) => void;
+  onSettled: (id: string) => void;
 }) => {
-  const { data } = useScaffoldReadContract({
+  const { data, isFetched, isError } = useScaffoldReadContract({
     contractName: "MostClawdWanted",
     functionName: "bounties",
     args: [id],
+    watch: false,
   });
 
   useEffect(() => {
-    if (!data) return;
-    const tuple = data as readonly unknown[];
-    const totalPledged = tuple[5] as bigint;
-    const status = Number(tuple[6] as number);
-    const deadline = tuple[4] as bigint;
-    onUpdate(id.toString(), totalPledged, status, deadline);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+    if (!isFetched && !isError) return;
+    if (data) {
+      onUpdate(id.toString(), {
+        title: data.descriptionCID ?? "",
+        deadline: data.deadline,
+        totalPledged: data.totalPledged,
+        status: Number(data.status),
+      });
+    }
+    onSettled(id.toString());
+  }, [data, isFetched, isError, id, onUpdate, onSettled]);
 
   return null;
 };
@@ -79,50 +74,49 @@ const LiveBountyReader = ({
 // Main board view
 // ---
 const BoardContent = () => {
-  const { data: events, isLoading } = useScaffoldEventHistory({
-    contractName: "MostClawdWanted",
-    eventName: "BountyCreated",
-    fromBlock: FROM_BLOCK,
-    watch: true,
-  });
-
   const { data: bountyCount } = useScaffoldReadContract({
     contractName: "MostClawdWanted",
     functionName: "bountyCount",
   });
 
   const [filter, setFilter] = useState<FilterKey>("pot");
-  const [liveData, setLiveData] = useState<Record<string, { totalPledged: bigint; status: number; deadline: bigint }>>({});
+  const [liveData, setLiveData] = useState<Record<string, LiveBounty>>({});
+  const [settled, setSettled] = useState<Record<string, true>>({});
 
-  const baseBounties = useMemo<BountyRow[]>(() => {
-    if (!events) return [];
-    return (events as unknown as BountyEvent[])
-      .filter(e => e?.args?.id !== undefined)
-      .map(e => ({
-        id: e.args.id as bigint,
-        title: e.args.descriptionCID ?? "",
-        deadline: e.args.deadline ?? 0n,
-        resolutionMode: Number(e.args.resolutionMode ?? 0),
-        claimMode: Number(e.args.claimMode ?? 0),
-        totalPledged: 0n,
-        status: 0,
-      }));
-  }, [events]);
+  const bountyIds = useMemo<bigint[]>(() => {
+    if (bountyCount === undefined) return [];
+    const n = Number(bountyCount);
+    if (!Number.isFinite(n) || n <= 0) return [];
+    return Array.from({ length: n }, (_, i) => BigInt(i));
+  }, [bountyCount]);
 
-  const handleUpdate = (id: string, totalPledged: bigint, status: number, deadline: bigint) => {
+  const handleUpdate = useCallback((id: string, live: LiveBounty) => {
     setLiveData(prev => {
       const cur = prev[id];
-      if (cur && cur.totalPledged === totalPledged && cur.status === status) return prev;
-      return { ...prev, [id]: { totalPledged, status, deadline } };
+      if (
+        cur &&
+        cur.totalPledged === live.totalPledged &&
+        cur.status === live.status &&
+        cur.deadline === live.deadline &&
+        cur.title === live.title
+      ) {
+        return prev;
+      }
+      return { ...prev, [id]: live };
     });
-  };
+  }, []);
+
+  const handleSettled = useCallback((id: string) => {
+    setSettled(prev => (prev[id] ? prev : { ...prev, [id]: true }));
+  }, []);
 
   const merged = useMemo<BountyRow[]>(() => {
-    return baseBounties.map(r => {
-      const live = liveData[r.id.toString()];
-      return live ? { ...r, totalPledged: live.totalPledged, status: live.status, deadline: live.deadline } : r;
+    return bountyIds.flatMap(id => {
+      const live = liveData[id.toString()];
+      if (!live) return [];
+      return [{ id, ...live }];
     });
-  }, [baseBounties, liveData]);
+  }, [bountyIds, liveData]);
 
   // Hero stats
   const heroStats = useMemo(() => {
@@ -137,7 +131,7 @@ const BoardContent = () => {
     return { totalPooled, openCount, builtCount };
   }, [merged]);
 
-  // Ticker items from recent events
+  // Ticker items from recent bounties
   const tickerItems = useMemo(() => {
     const items: { text: string; href?: string }[] = [];
     const recent = [...merged].sort((a, b) => (b.id > a.id ? 1 : -1)).slice(0, 8);
@@ -177,7 +171,10 @@ const BoardContent = () => {
     }
   }, [merged, filter]);
 
-  const isEmpty = !isLoading && merged.length === 0 && bountyCount !== undefined && bountyCount === 0n;
+  const isLoading =
+    bountyCount === undefined ||
+    (bountyIds.length > 0 && Object.keys(settled).length < bountyIds.length);
+  const isEmpty = bountyCount !== undefined && bountyCount === 0n;
 
   return (
     <div className="flex flex-col items-center w-full">
@@ -222,15 +219,20 @@ const BoardContent = () => {
           </Link>
         </div>
 
-        {/* Hidden readers — one per bounty */}
-        {baseBounties.map(r => (
-          <LiveBountyReader key={r.id.toString()} id={r.id} onUpdate={handleUpdate} />
+        {/* Hidden readers — one per bounty id from on-chain count */}
+        {bountyIds.map(id => (
+          <LiveBountyReader
+            key={id.toString()}
+            id={id}
+            onUpdate={handleUpdate}
+            onSettled={handleSettled}
+          />
         ))}
 
         {/* Loading skeletons */}
-        {isLoading && merged.length === 0 && (
+        {isLoading && !isEmpty && (
           <div className="space-y-3">
-            {Array.from({ length: 6 }).map((_, i) => (
+            {Array.from({ length: Math.max(bountyIds.length, 4) || 4 }).map((_, i) => (
               <PosterCardSkeleton key={i} />
             ))}
           </div>
@@ -255,7 +257,7 @@ const BoardContent = () => {
         )}
 
         {/* Board */}
-        {sorted.length > 0 && (
+        {!isLoading && sorted.length > 0 && (
           <div className="space-y-3">
             {sorted.map(row => (
               <PosterCard
