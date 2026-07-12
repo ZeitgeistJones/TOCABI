@@ -1,3 +1,13 @@
 {
-  "installCommand": "yarn install"
+  "installCommand": "yarn install",
+  "rewrites": [
+    {
+      "source": "/bounty/:id",
+      "destination": "/bounty/placeholder"
+    },
+    {
+      "source": "/rap-sheet/:address",
+      "destination": "/rap-sheet"
+    }
+  ]
 }
