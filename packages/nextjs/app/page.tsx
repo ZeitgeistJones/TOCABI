@@ -57,11 +57,12 @@ const LiveBountyReader = ({
   useEffect(() => {
     if (!isFetched && !isError) return;
     if (data) {
+      // bounties() ABI returns a positional tuple (not named fields)
       onUpdate(id.toString(), {
-        title: data.descriptionCID ?? "",
-        deadline: data.deadline,
-        totalPledged: data.totalPledged,
-        status: Number(data.status),
+        title: data[2] ?? "",
+        deadline: data[4],
+        totalPledged: data[5],
+        status: Number(data[6]),
       });
     }
     onSettled(id.toString());
